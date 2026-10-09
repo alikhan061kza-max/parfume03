@@ -46,6 +46,7 @@ body{background:#0a0a0c;color:#f5f0ea;font-family:'Inter',sans-serif;overflow-x:
 .slide.active{opacity:1;transform:scale(1) translateX(0);pointer-events:auto}
 .slide.prev{opacity:0;transform:scale(0.7) translateX(-100px)}
 .slide.next{opacity:0;transform:scale(0.7) translateX(100px)}
+.slide.hidden{display:none}
 .slide-3d{width:100%;height:320px;position:relative;margin-bottom:16px}
 .slide-3d canvas{display:block;width:100%!important;height:100%!important}
 .slide-info{text-align:center;width:100%}
@@ -197,36 +198,31 @@ var allPerfumes = [
   {name:"Baccarat Rouge 540", brand:"MFK", cat:"unisex", desc:"Шафран, амбра, кедр.", top:"Шафран, жасмин", mid:"Амбра, кедр, еловая смола", base:"Мускус, кедр, амбра", color:0xff6b3a, capColor:0xd4af37},
 ];
 
-var perfumes = allPerfumes.slice();
 var stage = document.getElementById('stage');
 var dotsContainer = document.getElementById('dots');
 var counter = document.getElementById('counter');
+var globalRenderer = null;
 
 function createLabelTexture(name, brand, ml) {
   var canvas = document.createElement('canvas');
   canvas.width = 512;
   canvas.height = 512;
   var ctx = canvas.getContext('2d');
-
   ctx.fillStyle = '#f8f5ef';
   ctx.fillRect(0, 0, 512, 512);
-
   ctx.strokeStyle = '#222';
   ctx.lineWidth = 6;
   ctx.strokeRect(15, 15, 482, 482);
-
   ctx.fillStyle = '#111';
   ctx.font = 'bold 42px Georgia, serif';
   ctx.textAlign = 'center';
   ctx.fillText(brand.toUpperCase(), 256, 120);
-
   ctx.strokeStyle = '#999';
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(80, 155);
   ctx.lineTo(432, 155);
   ctx.stroke();
-
   ctx.fillStyle = '#111';
   ctx.font = 'bold 46px Georgia, serif';
   var words = name.split(' ');
@@ -236,20 +232,16 @@ function createLabelTexture(name, brand, ml) {
   } else {
     ctx.fillText(name.toUpperCase(), 256, 260);
   }
-
   ctx.beginPath();
   ctx.moveTo(80, 335);
   ctx.lineTo(432, 335);
   ctx.stroke();
-
   ctx.fillStyle = '#333';
   ctx.font = 'bold 38px Georgia, serif';
   ctx.fillText(ml + ' ML', 256, 395);
-
   ctx.fillStyle = '#666';
   ctx.font = 'italic 22px Georgia, serif';
   ctx.fillText('ai.perfume.03', 256, 455);
-
   var texture = new THREE.CanvasTexture(canvas);
   texture.anisotropy = 16;
   return texture;
@@ -257,7 +249,6 @@ function createLabelTexture(name, brand, ml) {
 
 function createBottle(group, p, ml) {
   var bodyW, bodyH, bodyD, capH, labelW, labelH, ringY, capY, liquidH;
-
   if (ml === 10) {
     bodyW = 0.9; bodyH = 3.5; bodyD = 0.5; capH = 1.0;
     labelW = 0.7; labelH = 2.0; ringY = 1.85; capY = 2.35;
@@ -274,9 +265,7 @@ function createBottle(group, p, ml) {
     bodyW = 0.7; bodyH = 2.2; bodyD = 0.4; capH = 0.7;
     labelW = 0.55; labelH = 1.3; ringY = 1.15; capY = 1.5;
   }
-
   liquidH = bodyH * 0.7;
-
   var bodyGeo = new THREE.BoxGeometry(bodyW, bodyH, bodyD);
   var bodyMat = new THREE.MeshStandardMaterial({
     color: 0xd8d8e0, roughness: 0.1, metalness: 0.2,
@@ -284,7 +273,6 @@ function createBottle(group, p, ml) {
   });
   var body = new THREE.Mesh(bodyGeo, bodyMat);
   group.add(body);
-
   var liquidGeo = new THREE.BoxGeometry(bodyW * 0.85, liquidH, bodyD * 0.85);
   var liquidMat = new THREE.MeshStandardMaterial({
     color: p.color, roughness: 0.15, metalness: 0.2,
@@ -294,7 +282,6 @@ function createBottle(group, p, ml) {
   var liquid = new THREE.Mesh(liquidGeo, liquidMat);
   liquid.position.y = -bodyH / 2 + liquidH / 2 + 0.1;
   group.add(liquid);
-
   var waveGeo = new THREE.PlaneGeometry(bodyW * 0.8, bodyD * 0.8, 12, 12);
   var waveMat = new THREE.MeshBasicMaterial({
     color: 0xffffff, transparent: true, opacity: 0.35, side: THREE.DoubleSide
@@ -303,7 +290,6 @@ function createBottle(group, p, ml) {
   wave.rotation.x = -Math.PI / 2;
   wave.position.y = -bodyH / 2 + liquidH + 0.1;
   group.add(wave);
-
   var bubbles = [];
   for (var i = 0; i < 10; i++) {
     var bubbleGeo = new THREE.SphereGeometry(0.03 + Math.random() * 0.04, 8, 8);
@@ -323,39 +309,46 @@ function createBottle(group, p, ml) {
   group.userData.wave = wave;
   group.userData.bodyH = bodyH;
   group.userData.liquidH = liquidH;
-
   var capGeo = new THREE.CylinderGeometry(0.35, 0.35, capH, 32);
   var capMat = new THREE.MeshStandardMaterial({color: p.capColor, roughness: 0.15, metalness: 0.9});
   var cap = new THREE.Mesh(capGeo, capMat);
   cap.position.y = capY;
   group.add(cap);
-
   var ringGeo = new THREE.TorusGeometry(0.38, 0.04, 16, 40);
   var ringMat = new THREE.MeshStandardMaterial({color: 0xd4af37, metalness: 1, roughness: 0.1});
   var ring = new THREE.Mesh(ringGeo, ringMat);
   ring.rotation.x = Math.PI / 2;
   ring.position.y = ringY;
   group.add(ring);
-
   var labelTexture = createLabelTexture(p.name, p.brand, ml);
   var labelGeo = new THREE.PlaneGeometry(labelW, labelH);
   var labelMat = new THREE.MeshBasicMaterial({map: labelTexture, transparent: true, side: THREE.DoubleSide});
   var label = new THREE.Mesh(labelGeo, labelMat);
   label.position.z = bodyD / 2 + 0.005;
   group.add(label);
-
   var labelBack = label.clone();
   labelBack.position.z = -bodyD / 2 - 0.005;
   labelBack.rotation.y = Math.PI;
   group.add(labelBack);
-
   return group;
 }
+
+// ОДИН 3D-РЕНДЕРЕР НА ВСЕ СЛАЙДЫ
+var slidesData = [];
 
 function buildSlides() {
   stage.innerHTML = '';
   dotsContainer.innerHTML = '';
-  perfumes.forEach(function(p, i) {
+  slidesData = [];
+
+  var w = 500, h = 320;
+  globalRenderer = new THREE.WebGLRenderer({alpha: true, antialias: true});
+  globalRenderer.setSize(w, h);
+  globalRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  globalRenderer.setClearColor(0x000000, 0);
+  globalRenderer.shadowMap.enabled = true;
+
+  allPerfumes.forEach(function(p, i) {
     var catLabel = p.cat === 'men' ? 'Мужской' : p.cat === 'women' ? 'Женский' : 'Унисекс';
     var slide = document.createElement('div');
     slide.className = 'slide';
@@ -392,18 +385,8 @@ function buildSlides() {
     dot.dataset.index = i;
     dot.addEventListener('click', function() { goTo(i); });
     dotsContainer.appendChild(dot);
-  });
 
-  document.querySelectorAll('.slide-3d').forEach(function(container, idx) {
-    var p = perfumes[idx];
-    var w = container.clientWidth || 520;
-    var h = container.clientHeight || 320;
-    var renderer = new THREE.WebGLRenderer({alpha: true, antialias: true});
-    renderer.setSize(w, h);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setClearColor(0x000000, 0);
-    container.appendChild(renderer.domElement);
-
+    // Сцена для этого флакона
     var scene = new THREE.Scene();
     var camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 1000);
     camera.position.set(0, 1, 7);
@@ -432,50 +415,167 @@ function buildSlides() {
     var currentMl = 5;
     createBottle(bottleGroup, p, currentMl);
 
-    var targetRotY = 0, currentRotY = 0, autoRot = true;
-    var el = renderer.domElement;
-    var isDragging = false, prevX = 0;
-    el.style.cursor = 'grab';
-    el.addEventListener('mousedown', function(e) {
-      isDragging = true; prevX = e.clientX; el.style.cursor = 'grabbing'; autoRot = false;
-    });
-    window.addEventListener('mouseup', function() {
-      isDragging = false; el.style.cursor = 'grab';
-    });
-    window.addEventListener('mousemove', function(e) {
-      if (isDragging) {
-        targetRotY += (e.clientX - prevX) * 0.01;
-        prevX = e.clientX;
-      }
+    slidesData.push({
+      scene: scene,
+      camera: camera,
+      bottleGroup: bottleGroup,
+      currentMl: currentMl,
+      p: p,
+      idx: i,
+      targetRotY: 0,
+      currentRotY: 0,
+      autoRot: true,
+      isDragging: false,
+      prevX: 0
     });
 
-    var slide = container.closest('.slide');
+    // Смена объёма
     slide.querySelectorAll('.size-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var ml = parseInt(btn.dataset.ml);
-        if (ml !== currentMl) {
-          currentMl = ml;
+        if (ml !== slidesData[i].currentMl) {
+          slidesData[i].currentMl = ml;
           scene.remove(bottleGroup);
-          bottleGroup = new THREE.Group();
-          scene.add(bottleGroup);
-          createBottle(bottleGroup, p, ml);
+          var newGroup = new THREE.Group();
+          scene.add(newGroup);
+          createBottle(newGroup, p, ml);
+          slidesData[i].bottleGroup = newGroup;
         }
       });
     });
 
-    function animate() {
-      requestAnimationFrame(animate);
-      if (autoRot) targetRotY += 0.007;
-      currentRotY += (targetRotY - currentRotY) * 0.08;
-      bottleGroup.rotation.y = currentRotY;
-      bottleGroup.position.y = Math.sin(Date.now() * 0.001 + idx) * 0.08;
+    // Цена
+    var btns = slide.querySelectorAll('.size-btn');
+    var priceEl = slide.querySelector('.cur');
+    btns.forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        btns.forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        priceEl.textContent = Number(btn.dataset.price).toLocaleString('ru-RU');
+      });
+    });
+  });
+
+  // Вставляем единственный canvas в активный слайд
+  updateCanvasPosition();
+
+  // Обработчики мыши
+  globalRenderer.domElement.style.cursor = 'grab';
+  globalRenderer.domElement.addEventListener('mousedown', function(e) {
+    var s = slidesData[current];
+    if (s) { s.isDragging = true; s.prevX = e.clientX; globalRenderer.domElement.style.cursor = 'grabbing'; s.autoRot = false; }
+  });
+  window.addEventListener('mouseup', function() {
+    var s = slidesData[current];
+    if (s) { s.isDragging = false; globalRenderer.domElement.style.cursor = 'grab'; }
+  });
+  window.addEventListener('mousemove', function(e) {
+    var s = slidesData[current];
+    if (s && s.isDragging) {
+      s.targetRotY += (e.clientX - s.prevX) * 0.01;
+      s.prevX = e.clientX;
+    }
+  });
+}
+
+// Canvas всегда в активном слайде
+function updateCanvasPosition() {
+  var activeSlide = document.querySelector('.slide.active');
+  if (activeSlide && globalRenderer) {
+    var container = activeSlide.querySelector('.slide-3d');
+    if (container && !container.contains(globalRenderer.domElement)) {
+      container.appendChild(globalRenderer.domElement);
+    }
+  }
+}
+
+var current = 0;
+
+function updateCarousel() {
+  var slides = document.querySelectorAll('.slide');
+  var dots = document.querySelectorAll('.dot');
+  slides.forEach(function(s, i) {
+    s.classList.remove('active', 'prev', 'next');
+    if (i === current) s.classList.add('active');
+    else if (i < current) s.classList.add('prev');
+    else s.classList.add('next');
+  });
+  dots.forEach(function(d, i) { d.classList.toggle('active', i === current); });
+  counter.textContent = (current + 1) + ' / ' + allPerfumes.length;
+  updateCanvasPosition();
+}
+
+function goTo(i) {
+  if (i < 0) i = allPerfumes.length - 1;
+  if (i >= allPerfumes.length) i = 0;
+  current = i;
+  updateCarousel();
+}
+
+document.getElementById('prevBtn').addEventListener('click', function() { goTo(current - 1); });
+document.getElementById('nextBtn').addEventListener('click', function() { goTo(current + 1); });
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'ArrowLeft') goTo(current - 1);
+  if (e.key === 'ArrowRight') goTo(current + 1);
+});
+
+var touchStartX = 0;
+document.addEventListener('touchstart', function(e) { touchStartX = e.touches[0].clientX; });
+document.addEventListener('touchend', function(e) {
+  var diff = touchStartX - e.changedTouches[0].clientX;
+  if (Math.abs(diff) > 50) {
+    if (diff > 0) goTo(current + 1);
+    else goTo(current - 1);
+  }
+});
+
+// ФИЛЬТР — просто скрываем неподходящие слайды
+var tabs = document.querySelectorAll('.tab');
+tabs.forEach(function(tab) {
+  tab.addEventListener('click', function() {
+    tabs.forEach(function(t) { t.classList.remove('active'); });
+    tab.classList.add('active');
+    var f = tab.dataset.filter;
+
+    var visibleIndexes = [];
+    var slides = document.querySelectorAll('.slide');
+    slides.forEach(function(s, i) {
+      if (f === 'all' || s.dataset.cat === f) {
+        s.classList.remove('hidden');
+        visibleIndexes.push(i);
+      } else {
+        s.classList.add('hidden');
+      }
+    });
+
+    if (visibleIndexes.length > 0) {
+      current = visibleIndexes[0];
+      updateCarousel();
+    }
+  });
+});
+
+buildSlides();
+updateCarousel();
+
+// АНИМАЦИЯ
+function animate() {
+  requestAnimationFrame(animate);
+  if (globalRenderer && slidesData.length > 0) {
+    var s = slidesData[current];
+    if (s) {
+      if (s.autoRot) s.targetRotY += 0.007;
+      s.currentRotY += (s.targetRotY - s.currentRotY) * 0.08;
+      s.bottleGroup.rotation.y = s.currentRotY;
+      s.bottleGroup.position.y = Math.sin(Date.now() * 0.001 + s.idx) * 0.08;
 
       var t = Date.now() * 0.002;
-      var liquid = bottleGroup.userData.liquid;
-      var wave = bottleGroup.userData.wave;
-      var bubbles = bottleGroup.userData.bubbles;
-      var liquidH = bottleGroup.userData.liquidH;
-      var bodyH = bottleGroup.userData.bodyH;
+      var liquid = s.bottleGroup.userData.liquid;
+      var wave = s.bottleGroup.userData.wave;
+      var bubbles = s.bottleGroup.userData.bubbles;
+      var liquidH = s.bottleGroup.userData.liquidH;
+      var bodyH = s.bottleGroup.userData.bodyH;
 
       if (liquid) {
         liquid.scale.y = 1 + Math.sin(t) * 0.02;
@@ -500,89 +600,13 @@ function buildSlides() {
         });
       }
 
-      renderer.render(scene, camera);
+      globalRenderer.render(s.scene, s.camera);
     }
-    animate();
-
-    window.addEventListener('resize', function() {
-      var nw = container.clientWidth;
-      var nh = container.clientHeight;
-      camera.aspect = nw / nh;
-      camera.updateProjectionMatrix();
-      renderer.setSize(nw, nh);
-    });
-  });
-
-  document.querySelectorAll('.slide').forEach(function(slide) {
-    var btns = slide.querySelectorAll('.size-btn');
-    var priceEl = slide.querySelector('.cur');
-    btns.forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        btns.forEach(function(b) { b.classList.remove('active'); });
-        btn.classList.add('active');
-        priceEl.textContent = Number(btn.dataset.price).toLocaleString('ru-RU');
-      });
-    });
-  });
-}
-
-var current = 0;
-
-function updateCarousel() {
-  var slides = document.querySelectorAll('.slide');
-  var dots = document.querySelectorAll('.dot');
-  slides.forEach(function(s, i) {
-    s.classList.remove('active', 'prev', 'next');
-    if (i === current) s.classList.add('active');
-    else if (i < current) s.classList.add('prev');
-    else s.classList.add('next');
-  });
-  dots.forEach(function(d, i) { d.classList.toggle('active', i === current); });
-  counter.textContent = (current + 1) + ' / ' + perfumes.length;
-}
-
-function goTo(i) {
-  if (i < 0) i = perfumes.length - 1;
-  if (i >= perfumes.length) i = 0;
-  current = i;
-  updateCarousel();
-}
-
-document.getElementById('prevBtn').addEventListener('click', function() { goTo(current - 1); });
-document.getElementById('nextBtn').addEventListener('click', function() { goTo(current + 1); });
-
-document.addEventListener('keydown', function(e) {
-  if (e.key === 'ArrowLeft') goTo(current - 1);
-  if (e.key === 'ArrowRight') goTo(current + 1);
-});
-
-var touchStartX = 0;
-document.addEventListener('touchstart', function(e) { touchStartX = e.touches[0].clientX; });
-document.addEventListener('touchend', function(e) {
-  var diff = touchStartX - e.changedTouches[0].clientX;
-  if (Math.abs(diff) > 50) {
-    if (diff > 0) goTo(current + 1);
-    else goTo(current - 1);
   }
-});
+}
+animate();
 
-var tabs = document.querySelectorAll('.tab');
-tabs.forEach(function(tab) {
-  tab.addEventListener('click', function() {
-    tabs.forEach(function(t) { t.classList.remove('active'); });
-    tab.classList.add('active');
-    var f = tab.dataset.filter;
-    if (f === 'all') perfumes = allPerfumes.slice();
-    else perfumes = allPerfumes.filter(function(p) { return p.cat === f; });
-    current = 0;
-    buildSlides();
-    updateCarousel();
-  });
-});
-
-buildSlides();
-updateCarousel();
-
+// ФОН
 (function(){
   var canvas = document.getElementById('webgl-bg');
   var renderer = new THREE.WebGLRenderer({canvas: canvas, alpha: true, antialias: true});
@@ -606,8 +630,8 @@ updateCarousel();
     mx = (e.clientX / window.innerWidth - 0.5) * 2;
     my = (e.clientY / window.innerHeight - 0.5) * 2;
   });
-  function animate() {
-    requestAnimationFrame(animate);
+  function animateBg() {
+    requestAnimationFrame(animateBg);
     sphere.rotation.y += 0.0015;
     sphere.rotation.x += 0.001;
     camera.position.x += (mx * 3 - camera.position.x) * 0.05;
@@ -615,7 +639,7 @@ updateCarousel();
     camera.lookAt(scene.position);
     renderer.render(scene, camera);
   }
-  animate();
+  animateBg();
   window.addEventListener('resize', function() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
